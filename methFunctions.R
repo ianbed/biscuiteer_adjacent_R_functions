@@ -49,7 +49,7 @@ densPlotLegend = function(){
 
 # readBiscuit_as_list wrapper around biscuiteer::readBiscuit
 # designed to work well with Biscuit_Snakemake
-readBiscuit_as_list <- function(directory, sampNames, referenceGenome, readBiscuitMergedFlag, vcf_path, whichFlag){
+readBiscuit_as_list <- function(directory, sampNames, referenceGenome, readBiscuitMergedFlag, vcf_path, whichFlag=NULL){
   require(tictoc)
   bsseq_list = list()
   for (i in 1:length(sampNames)){#length(sampNames)){
