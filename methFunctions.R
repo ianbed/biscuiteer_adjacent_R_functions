@@ -1,4 +1,118 @@
 
+# EXAMPLE USAGE OF HeatmapFromBed Function
+# myCaption <- paste('UQCRH','chr1_46303335-46304488')
+# 
+# ordered <- dplyr::arrange(meta,histotype,cellType)$sample
+# new_order <- match(ordered,meta$sample)
+# 
+# heatmapSampleAnno <- rowAnnotation(
+#   histotype = meta$histotype[new_order],
+#   cellType = meta$cellType[new_order],
+#   MIR200c_avg_beta = meta$MIR200c_avg_beta[new_order],
+#   col = col_arg_in_vivo
+# )
+# 
+# myMat <- HeatmapFromBed(myChr = 'chr1',
+#                         myRanges = IRanges(46303335,width = 1153),
+#                         nameArg = myCaption,
+#                         new_order = new_order, # sample order
+#                         hm_sample_anno = heatmapSampleAnno # row anno in this case
+# )
+
+HeatmapFromBed <- function(myChr,myRanges,nameArg,new_order,hm_sample_anno){
+  
+  bs_list <- generate_or_load_bsseq_list(
+    path='../Biscuit_Snakemake_Workflow/analysis/pileup/',
+    vcf_header_path = '../Biscuit_Snakemake_Workflow/analysis/pileup/',
+    name=nameArg,
+    sampNames=meta$sample,
+    readBiscuitMergedFlag=TRUE,
+    whichFlag = GRanges(
+      seqnames=myChr,
+      ranges=myRanges,
+      strand='*'
+    )
+  )
+  
+  names(bs_list) <-  meta$sample
+  
+  tictoc::tic("Unionize")
+  myBS <- bs_list[[1]]
+  for (i in (2:length(bs_list))){
+    myBS <- biscuiteer::unionize(myBS,bs_list[[i]])
+  }
+  tictoc::toc()
+  
+  betaMatrix.tidy <- do.call('rbind',
+                             lapply(
+                               seq_along(bs_list), FUN = function(
+                                 x,n,i
+                               ){
+                                 # print(paste(x[i],n[i],i))
+                                 cbind(
+                                   data.frame(rowRanges(x[[i]])),
+                                   beta = as.numeric(round(x[[i]]@assays@data$M / x[[i]]@assays@data$Cov, 2)),
+                                   depth = as.numeric(x[[i]]@assays@data$Cov),
+                                   sample = rep(n[[i]],nrow(x[[i]]))
+                                 )
+                               },
+                               x=bs_list,
+                               n=names(bs_list)
+                             )
+  )
+  
+  betaMatrix.tidy$pos <- paste0(betaMatrix.tidy$seqnames,':',betaMatrix.tidy$start)
+  
+  
+  ## GET THE BETA MATRIX
+  betaMatrix <- betaMatrix.tidy %>% 
+    dplyr::select(one_of(c('sample','beta','pos'))) %>%
+    tidyr::pivot_wider(values_from = beta,names_from = sample)
+  dim(betaMatrix)
+  betaMatrix <- dplyr::arrange(betaMatrix,pos)
+  .rownames <- betaMatrix$pos
+  betaMatrix <- dplyr::select(betaMatrix,-pos)
+  dim(betaMatrix)
+  rownames(betaMatrix) <- .rownames
+  
+  # Specific to project
+  
+  
+  betaMatrix <- t(betaMatrix)
+  
+  
+  betaMatrix2 <- betaMatrix[new_order,]
+  myHM <- ComplexHeatmap::Heatmap(
+    # t(betaMatrix),
+    betaMatrix2,
+    show_column_names = FALSE,
+    col=heatmapColorPal,
+    cluster_rows = FALSE,
+    cluster_columns = FALSE,
+    heatmap_legend_param = list(title='Beta'),
+    row_title_gp = gpar(fontsize = 9),
+    row_names_gp = gpar(fontsize = 12),
+    column_names_rot = 90,
+    column_names_gp = gpar(
+      fontsize = 8
+    ),
+    column_title = nameArg, 
+    column_title_gp = gpar(fontsize = 22),
+    right_annotation = hm_sample_anno,
+    heatmap_width = unit(9, "in"),  
+    heatmap_height = unit(7, "in"),  
+    row_title_rot = 0
+  )
+  
+  print(
+    myHM
+  )
+  
+  return(
+    betaMatrix
+  )
+}
+
 densPlot = function(x,Covfilter,xlabels=TRUE,adjust_lvl=4){
     # color_scheme = colorRampPalette(c('Yellow','Blue','Black'))(100)
     # color_scheme = colorRampPalette(c('Blue','Red'))(100)
@@ -49,7 +163,7 @@ densPlotLegend = function(){
 
 # readBiscuit_as_list wrapper around biscuiteer::readBiscuit
 # designed to work well with Biscuit_Snakemake
-readBiscuit_as_list <- function(directory, sampNames, referenceGenome, readBiscuitMergedFlag, vcf_path, whichFlag=NULL){
+readBiscuit_as_list <- function(directory, sampNames, referenceGenome, readBiscuitMergedFlag, vcf_path, whichFlag){
   require(tictoc)
   bsseq_list = list()
   for (i in 1:length(sampNames)){#length(sampNames)){
