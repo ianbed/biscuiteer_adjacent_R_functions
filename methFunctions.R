@@ -262,6 +262,7 @@ getMult_densPlots = function(myBSlist,name,ylimit,CovFilter){
   )
 }
 
+# deprecated, pass instead a granges to readBiscuit
 intersectBSseqListGenomicRanges = function(subject.gr,queryList,maxgap){ # returns a subset bsseq object
   returnList=list()
   for(i in 1:length(queryList)){
@@ -285,6 +286,7 @@ intersectBSseqListGenomicRanges = function(subject.gr,queryList,maxgap){ # retur
   return(returnList)
 }
 
+# deprecated, use snakemake pipeline
 slidingWindow = function(dir){
   files <- list.files(dir)[grep('.tsv',list.files(dir))]
   # if(length(files)){
@@ -313,6 +315,7 @@ slidingWindow = function(dir){
   # }
 }
 
+# deprecated, use snakemake pipeline
 BinnedAvgPCA = function(binnedDF,meta = meta, name = NULL){
   pca <- prcomp(t(binnedDF))
   pr_comps <- data.frame(pca$x)
@@ -363,9 +366,9 @@ BinnedAvgPCA = function(binnedDF,meta = meta, name = NULL){
 ## Function from DMRcate
 ## modified here for mostly colors
 
-dmr.plot.modified <- function (ranges, dmr, CpGs, what = c("Beta", "M"), arraytype = c("EPIC", 
-                                                                  "450K"), phen.col, genome = c("hg19", "hg38", "mm10"), ...) 
-{
+dmr.plot.modified <- function (ranges, dmr, CpGs, main_title, what = c("Beta", "M"), arraytype = c("EPIC","450K"), phen.col, genome = c("hg19", "hg38", "mm10"), ...){
+  require(Gviz)
+  
   eh = ExperimentHub()
   what <- match.arg(what)
   arraytype <- match.arg(arraytype)
@@ -450,6 +453,45 @@ dmr.plot.modified <- function (ranges, dmr, CpGs, what = c("Beta", "M"), arrayty
                                                                      ranges(cpgs.ranges)), name = "CpGs", fill = "green", 
                                                              col = NULL, stacking = "dense"))
   suppressWarnings(plotTracks(c(basetracks, extras, dt.group), 
-                              from = start(ranges.inplot), to = end(ranges.inplot), 
+                              from = start(ranges.inplot), to = end(ranges.inplot),
+                              main=main_title,cex.main=0.8,
                               ...))
+}
+
+annotate_dmr.ranges = function(dmr.ranges,t2g){
+  require(TxDb.Hsapiens.UCSC.hg38.knownGene)
+  require(org.Hs.eg.db)
+  require(GenomicFeatures)
+  g <- genes(TxDb.Hsapiens.UCSC.hg38.knownGene)
+  # remove large "genes" from g
+  length(g)
+  g <- g[-which(data.frame(g)$width>1e6)]
+  length(g)
+  
+  res <- findOverlaps(
+    query = dmr.ranges,
+    subject = g,
+    maxgap = 1e4# a granges from the transcript database
+  )
+  
+  # bind together the genes from txdb & the dmrcate information
+  x <- cbind(
+    as.data.frame(g[res@to]) %>% dplyr::rename('gene_start'='start','gene_end'='end','gene_width'='width'),
+    as.data.frame(dmr.ranges[res@from])
+  )
+  # remove duplicated colnames
+  remove <- which(duplicated(colnames(x)))
+  cat("removing", colnames(x)[remove],"\n")
+  x <- x[,-remove]
+  
+  resDF <- dplyr::left_join(x,t2g,by=c('gene_id'='entrezgene_id'))
+  dim(resDF)
+  
+  # Add hyper v. hypo annotation
+  # hyper <- dmr.ranges[mcols(dmr.ranges)$meandiff>0]
+  # hypo <- dmr.ranges[mcols(dmr.ranges)$meandiff<0]
+  ## HYPER (methylated more in X when X_v_Z)
+  resDF$direction <- ifelse(resDF$meandiff>0,'hyper','hypo')
+  
+  return(resDF)
 }
