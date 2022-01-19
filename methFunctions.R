@@ -368,7 +368,7 @@ BinnedAvgPCA = function(binnedDF,meta = meta, name = NULL){
 
 dmr.plot.modified <- function (ranges, dmr, CpGs, main_title, what = c("Beta", "M"), arraytype = c("EPIC","450K"), phen.col, genome = c("hg19", "hg38", "mm10"), ...){
   require(Gviz)
-  
+  options(ucscChromosomeNames=FALSE)
   eh = ExperimentHub()
   what <- match.arg(what)
   arraytype <- match.arg(arraytype)
@@ -422,6 +422,8 @@ dmr.plot.modified <- function (ranges, dmr, CpGs, main_title, what = c("Beta", "
     methRatios <- GRanges(seqnames(cpgs.ranges), ranges(cpgs.ranges), 
                           mcols = as.matrix(getCoverage(cpgs.ranges, type = "M"))/as.matrix(getCoverage(cpgs.ranges, 
                                                                                                         type = "Cov")))
+    coverage <- GRanges(seqnames(cpgs.ranges), ranges(cpgs.ranges), 
+                          mcols = as.matrix(getCoverage(cpgs.ranges, type = "Cov")))
   }
   else {
     methRatios <- cpgs.ranges
@@ -432,10 +434,15 @@ dmr.plot.modified <- function (ranges, dmr, CpGs, main_title, what = c("Beta", "
                                                                                names(phen.col) %in% i], name = i, background.title = phen.col[i], 
                                                                     type = "heatmap", showSampleNames = TRUE, ylim = c(0, 
                                                                                                                        1), genome = genome, gradient = c("blue", "yellow")))
-  dt.group <- c(dt.group, list(DataTrack(methRatios, groups = names(phen.col), 
-                                         type = "smooth", aggregateGroups = TRUE, aggregation = function(x) mean(x, 
+  dt.group <- c(dt.group, list(DataTrack(methRatios, groups = names(phen.col), # span=0.1,degree=3,
+                                         type = "smooth",  aggregateGroups = TRUE, aggregation = function(x) mean(x, 
                                                                                                                  na.rm = TRUE), col = phen.col[sort(group)], ylim = c(0, 
                                                                                                                                                                       1), name = "Smoothed\n group means", na.rm = TRUE)))
+  
+  dt.group <- c(dt.group, list(DataTrack(coverage, groups = names(phen.col), # span=0.1,degree=3,
+                                         type = "smooth",  aggregateGroups = TRUE, aggregation = function(x) mean(x, 
+                                                                                                                 na.rm = TRUE), col = phen.col[sort(group)], ylim = c(0, 
+                                                                                                                                                                      30), name = "Coverage\n group means", na.rm = TRUE)))
   switch(genome, hg19 = {
     grt = eh[["EH3133"]]
   }, hg38 = {
@@ -448,7 +455,9 @@ dmr.plot.modified <- function (ranges, dmr, CpGs, main_title, what = c("Beta", "
                                  showFeatureId = TRUE, col = NULL, fill = "purple", id = dmrs.inplot$ID, 
                                  fontcolor = "black"))
   values(cpgs.ranges) <- NULL
-  basetracks <- list(IdeogramTrack(genome = genome, chromosome = as.character(seqnames(ranges.inplot))), 
+  
+  # manual hg19!
+  basetracks <- list(IdeogramTrack(genome = 'hg19', chromosome = as.character(seqnames(ranges.inplot))), 
                      GenomeAxisTrack(), grt, AnnotationTrack(GRanges(seqnames(cpgs.ranges), 
                                                                      ranges(cpgs.ranges)), name = "CpGs", fill = "green", 
                                                              col = NULL, stacking = "dense"))
@@ -476,7 +485,7 @@ annotate_dmr.ranges = function(dmr.ranges,t2g){
   
   # bind together the genes from txdb & the dmrcate information
   x <- cbind(
-    as.data.frame(g[res@to]) %>% dplyr::rename('gene_start'='start','gene_end'='end','gene_width'='width'),
+    as.data.frame(g[res@to],row.names=NULL) %>% dplyr::rename('gene_start'='start','gene_end'='end','gene_width'='width'),
     as.data.frame(dmr.ranges[res@from])
   )
   # remove duplicated colnames
